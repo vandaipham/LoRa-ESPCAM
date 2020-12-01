@@ -42,6 +42,101 @@ int sendData(const char* logName, const char* data)
     return txBytes;
 }
 
+int sendGeneralFrame(uint8_t frameType, int8_t cmdType, uint8_t frameLoadLen, uint8_t* frameLoad)
+{
+    uint8_t checksum = 0;
+    checksum ^= frameType;
+    checksum ^= 0; // frameNum which is unused and always 0
+    checksum ^= cmdType;
+    checksum ^= frameLoadLen;
+
+    uint8_t *frameByte = (uint8_t *) malloc((uint8_t) frameLoadLen + 5);
+    frameByte[0] = frameType;
+    frameByte[1] = (uint8_t) 0; // Frame Number = 0 by default.
+    frameByte[2] = cmdType;
+    frameByte[3] = frameLoadLen;
+    memcpy(frameByte + sizeof(uint8_t) * 4, frameLoad, frameLoadLen);
+
+    for (size_t i = 0; i < frameLoadLen; i++)
+    {
+        checksum ^= frameLoad[i];
+    }
+    frameByte[(uint8_t) frameLoadLen + 5 - 1] = checksum;
+
+    uart_write_bytes(UART_NUM_1, (const char *) frameByte, (uint8_t) frameLoadLen + 5);
+    
+    free(frameByte);
+    return 1;
+}
+
+int sendAppDataRequest( uint16_t target, uint8_t dataLen, uint8_t* data)
+{
+    // We add 7 bytes to the head of data for this payload
+    uint8_t frameLoadLen = 6 + dataLen;
+    uint8_t* frameLoad = (uint8_t *) malloc(sizeof(uint8_t) * frameLoadLen);
+
+    // target address as big endian short
+    frameLoad[0] = (uint8_t) ((target >> 8) & 0xFF);
+    frameLoad[1] = (uint8_t) (target & 0xFF);
+
+    // ACK request == 1 -> require acknowledgement of recv
+    frameLoad[2] = (uint8_t) 0;
+
+    // Send radius: which defaults to max of 7 hops, we can use that
+    frameLoad[3] = (uint8_t) 7;
+
+    // Discovery routing params == 1 -> automatic routing
+    frameLoad[4] = (uint8_t) 1;
+
+    // Data length
+    frameLoad[5] = dataLen;
+
+    // Data from index 7 to the end should be the data
+    memcpy(frameLoad + (sizeof(uint8_t) * 6), data, dataLen);
+
+    // frameType = 0x05, cmdType = 0x01 for sendData
+    sendGeneralFrame(0x05, 0x01, frameLoadLen, frameLoad);
+    
+    free(frameLoad);
+
+    return 1;
+}
+
+int testingSend()
+{
+    uint8_t* data = malloc(sizeof(uint8_t) * 4);
+    data[0] = 0x01;
+    data[1] = 0x02;
+    data[2] = 0x03;
+    data[3] = 0x04;
+    sendAppDataRequest(0x1024, 4, data);
+    free(data);
+    return 1;
+}
+
+void sendPacket()
+{
+    uint8_t *dataByte = (uint8_t *) malloc(16);
+    dataByte[0] = 0x05;
+    dataByte[1] = (uint8_t) 0;
+    dataByte[2] = 0x01;
+    dataByte[3] = 0x0b;
+    dataByte[4] = 0x02;
+    dataByte[5] = (uint8_t) 0;
+    dataByte[6] = (uint8_t) 0;
+    dataByte[7] = 0x07;
+    dataByte[8] = 0x01;
+    dataByte[9] = 0x05;
+    dataByte[10] = 0x48;
+    dataByte[11] = 0x65;
+    dataByte[12] = 0x6c;
+    dataByte[13] = 0x6c;
+    dataByte[14] = 0x6f;
+    dataByte[15] = 0x4c;
+    uart_write_bytes(UART_NUM_1, (const char *) dataByte, 16);
+    free(dataByte);
+}
+
 static void tx_task(void *arg)
 {
     static const char *TX_TASK_TAG = "TX_TASK";
@@ -52,25 +147,7 @@ static void tx_task(void *arg)
         //char data[] = {0x05, 0, 0x01, 0x0b, 0x02, 0, 0, 0x07, 0x01, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x4c};
         //sendData(TX_TASK_TAG, data);
 
-        uint8_t *dataByte = (uint8_t *) malloc(16);
-        dataByte[0] = 0x05;
-        dataByte[1] = (uint8_t) 0;
-        dataByte[2] = 0x01;
-        dataByte[3] = 0x0b;
-        dataByte[4] = 0x02;
-        dataByte[5] = (uint8_t) 0;
-        dataByte[6] = (uint8_t) 0;
-        dataByte[7] = 0x07;
-        dataByte[8] = 0x01;
-        dataByte[9] = 0x05;
-        dataByte[10] = 0x48;
-        dataByte[11] = 0x65;
-        dataByte[12] = 0x6c;
-        dataByte[13] = 0x6c;
-        dataByte[14] = 0x6f;
-        dataByte[15] = 0x4c;
-        uart_write_bytes(UART_NUM_1, (const char *) dataByte, 16);
-        free(dataByte);
+        testingSend();
 
         vTaskDelay(4000 / portTICK_PERIOD_MS);
     }
