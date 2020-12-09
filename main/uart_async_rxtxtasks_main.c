@@ -14,6 +14,109 @@
 #include "string.h"
 #include "driver/gpio.h"
 
+#include "esp_camera.h"
+/**
+ * @brief Data structure of camera frame buffer
+ */
+// typedef struct {
+//     uint8_t * buf;              /*!< Pointer to the pixel data */
+//     size_t len;                 /*!< Length of the buffer in bytes */
+//     size_t width;               /*!< Width of the buffer in pixels */
+//     size_t height;              /*!< Height of the buffer in pixels */
+//     pixformat_t format;         /*!< Format of the pixel data */
+//     struct timeval timestamp;   /*!< Timestamp since boot of the first DMA buffer of the frame */
+// } camera_fb_t;
+
+//ESP32Cam (AiThinker) PIN Map
+#define CAM_PIN_PWDN 32
+#define CAM_PIN_RESET -1 //software reset will be performed
+#define CAM_PIN_XCLK 0
+#define CAM_PIN_SIOD 26
+#define CAM_PIN_SIOC 27
+
+#define CAM_PIN_D7 35
+#define CAM_PIN_D6 34
+#define CAM_PIN_D5 39
+#define CAM_PIN_D4 36
+#define CAM_PIN_D3 21
+#define CAM_PIN_D2 19
+#define CAM_PIN_D1 18
+#define CAM_PIN_D0 5
+#define CAM_PIN_VSYNC 25
+#define CAM_PIN_HREF 23
+#define CAM_PIN_PCLK 22
+
+static const char *TAG = "ESP32Cam";
+
+static camera_config_t camera_config = {
+    .pin_pwdn  = CAM_PIN_PWDN,
+    .pin_reset = CAM_PIN_RESET,
+    .pin_xclk = CAM_PIN_XCLK,
+    .pin_sscb_sda = CAM_PIN_SIOD,
+    .pin_sscb_scl = CAM_PIN_SIOC,
+
+    .pin_d7 = CAM_PIN_D7,
+    .pin_d6 = CAM_PIN_D6,
+    .pin_d5 = CAM_PIN_D5,
+    .pin_d4 = CAM_PIN_D4,
+    .pin_d3 = CAM_PIN_D3,
+    .pin_d2 = CAM_PIN_D2,
+    .pin_d1 = CAM_PIN_D1,
+    .pin_d0 = CAM_PIN_D0,
+    .pin_vsync = CAM_PIN_VSYNC,
+    .pin_href = CAM_PIN_HREF,
+    .pin_pclk = CAM_PIN_PCLK,
+
+    //XCLK 20MHz or 10MHz for OV2640 double FPS (Experimental)
+    .xclk_freq_hz = 20000000,
+    .ledc_timer = LEDC_TIMER_0,
+    .ledc_channel = LEDC_CHANNEL_0,
+
+    .pixel_format = PIXFORMAT_JPEG,//YUV422,GRAYSCALE,RGB565,JPEG
+    .frame_size = FRAMESIZE_UXGA,//QQVGA-QXGA Do not use sizes above QVGA when not JPEG
+
+    .jpeg_quality = 12, //0-63 lower number means higher quality
+    .fb_count = 1 //if more than one, i2s runs in continuous mode. Use only with JPEG
+};
+
+esp_err_t init_camera(){
+    //power up the camera if PWDN pin is defined
+    if(CAM_PIN_PWDN != -1){
+    	gpio_set_direction(GPIO_NUM_32, GPIO_MODE_OUTPUT);
+        // pinMode(CAM_PIN_PWDN, OUTPUT);
+        gpio_set_level(GPIO_NUM_32, 0);
+    }
+
+    //initialize the camera
+    esp_err_t err = esp_camera_init(&camera_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Camera Init Failed");
+        return err;
+    }
+
+    return ESP_OK;
+}
+
+esp_err_t camera_capture(){
+    //acquire a frame
+    camera_fb_t * fb = esp_camera_fb_get();
+    if (!fb) {
+        ESP_LOGE(TAG, "Camera Capture Failed");
+        return ESP_FAIL;
+    }
+
+    //replace this with your own function
+    ESP_LOGI(TAG, "Picture taken! Its width was: %zu pixels", fb->width);
+    ESP_LOGI(TAG, "Picture taken! Its height was: %zu pixels", fb->height);
+    // ESP_LOGI(TAG, "Picture taken! Its format was: %zu bytes", fb->format);
+    // ESP_LOGI(TAG, "Picture taken! Its buf was: %zu bytes", fb->buf);
+    ESP_LOGI(TAG, "Picture taken! Its len was: %zu bytes", fb->len);
+  
+    //return the frame buffer back to the driver for reuse
+    esp_camera_fb_return(fb);
+    return ESP_OK;
+}
+
 static const int RX_BUF_SIZE = 1024;
 
 #define TXD_PIN (GPIO_NUM_1)
@@ -114,8 +217,17 @@ int testingSend()
     return 1;
 }
 
-int sendImage(uint8_t imageDataLen, uint8_t* imageData)
+int sendImage()
 {
+    //acquire a frame
+    camera_fb_t * fb = esp_camera_fb_get();
+    if (!fb) {
+        ESP_LOGE(TAG, "Camera Capture Failed");
+        return ESP_FAIL;
+    }
+    uint8_t* imageData = fb->buf;
+    size_t imageDataLen = fb->len;
+
     // imageDataLen - Image Size in Byte
     int numOfFragment = 0;                  // Number of Fragments
     int fragmentSize = 100;                 // each fragment has 100 Bytes.
@@ -206,6 +318,7 @@ static void rx_task(void *arg)
 void app_main(void)
 {
     init();
+    init_camera();
     xTaskCreate(rx_task, "uart_rx_task", 1024*2, NULL, configMAX_PRIORITIES, NULL);
     xTaskCreate(tx_task, "uart_tx_task", 1024*2, NULL, configMAX_PRIORITIES-1, NULL);
 }
