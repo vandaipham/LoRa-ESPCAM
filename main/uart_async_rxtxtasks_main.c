@@ -253,6 +253,9 @@ int sendImage()
         }
         // sendAppDataRequest(0x0000, 4, data);
         free(data);
+        //return the frame buffer back to the driver for reuse
+        esp_camera_fb_return(fb);
+        
         vTaskDelay(5000 / portTICK_PERIOD_MS);
     }
 
