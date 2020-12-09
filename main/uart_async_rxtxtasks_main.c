@@ -119,7 +119,8 @@ int sendImage(uint8_t imageDataLen, uint8_t* imageData)
     // imageDataLen - Image Size in Byte
     int numOfFragment = 0;                  // Number of Fragments
     int fragmentSize = 100;                 // each fragment has 100 Bytes.
-    
+    int imageID = 0;
+
     if (imageDataLen % fragmentSize == 0)
         numOfFragment = imageDataLen / fragmentSize;
     else
@@ -127,15 +128,17 @@ int sendImage(uint8_t imageDataLen, uint8_t* imageData)
     
     for (int8_t i = 0; i < numOfFragment; i++) {
         // Sending each fragment
-        uint8_t* data = malloc(sizeof(uint8_t) * (fragmentSize + 2));
-        data[0] = 0x01;     // Image ID
-        data[1] = 0x02;     // Sequence Number
-        
-        // Data from index 3 to the end should be the image fragment data.
-        memcpy(data + (sizeof(uint8_t) * 2), imageData, fragmentSize);
+        if (i == numOfFragment - 1)
+            fragmentSize = imageDataLen - (numOfFragment-1)*100;
 
-        
-        
+        uint8_t* data = malloc(sizeof(uint8_t) * (fragmentSize + 2));
+        data[0] = (uint8_t) imageID;     // Image ID
+        data[1] = (uint8_t) i;     // Sequence Number
+
+        for (int8_t j = 0; j < 100; j++) {
+            // Data from index 3 to the end should be the image fragment data.
+            memcpy(data + (sizeof(uint8_t) * (2+j)), &imageData[j + i*100], 1);
+        }
         // sendAppDataRequest(0x0000, 4, data);
         free(data);
         vTaskDelay(5000 / portTICK_PERIOD_MS);
@@ -178,7 +181,7 @@ static void tx_task(void *arg)
         //sendData(TX_TASK_TAG, data);
 
         //testingSend();
-        sendImage();
+        //sendImage();
 
         vTaskDelay(5000 / portTICK_PERIOD_MS);
     }
