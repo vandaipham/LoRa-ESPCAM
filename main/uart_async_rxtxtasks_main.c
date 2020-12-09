@@ -109,8 +109,38 @@ int testingSend()
     data[1] = 0x02;
     data[2] = 0x03;
     data[3] = 0x04;
-    sendAppDataRequest(0x1024, 4, data);
+    sendAppDataRequest(0x0000, 4, data);
     free(data);
+    return 1;
+}
+
+int sendImage(uint8_t imageDataLen, uint8_t* imageData)
+{
+    // imageDataLen - Image Size in Byte
+    int numOfFragment = 0;                  // Number of Fragments
+    int fragmentSize = 100;                 // each fragment has 100 Bytes.
+    
+    if (imageDataLen % fragmentSize == 0)
+        numOfFragment = imageDataLen / fragmentSize;
+    else
+        numOfFragment = imageDataLen / fragmentSize + 1;
+    
+    for (int8_t i = 0; i < numOfFragment; i++) {
+        // Sending each fragment
+        uint8_t* data = malloc(sizeof(uint8_t) * (fragmentSize + 2));
+        data[0] = 0x01;     // Image ID
+        data[1] = 0x02;     // Sequence Number
+        
+        // Data from index 3 to the end should be the image fragment data.
+        memcpy(data + (sizeof(uint8_t) * 2), imageData, fragmentSize);
+
+        
+        
+        // sendAppDataRequest(0x0000, 4, data);
+        free(data);
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
+    }
+
     return 1;
 }
 
@@ -147,9 +177,10 @@ static void tx_task(void *arg)
         //char data[] = {0x05, 0, 0x01, 0x0b, 0x02, 0, 0, 0x07, 0x01, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x4c};
         //sendData(TX_TASK_TAG, data);
 
-        testingSend();
+        //testingSend();
+        sendImage();
 
-        vTaskDelay(4000 / portTICK_PERIOD_MS);
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
     }
 }
 
