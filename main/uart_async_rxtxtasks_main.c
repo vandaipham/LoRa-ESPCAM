@@ -46,7 +46,7 @@
 #define CAM_PIN_HREF 23
 #define CAM_PIN_PCLK 22
 
-static const char *TAG = "ESP32Cam";
+//static const char *TAG = "ESP32Cam";
 
 static camera_config_t camera_config = {
     .pin_pwdn  = CAM_PIN_PWDN,
@@ -73,9 +73,9 @@ static camera_config_t camera_config = {
     .ledc_channel = LEDC_CHANNEL_0,
 
     .pixel_format = PIXFORMAT_JPEG,//YUV422,GRAYSCALE,RGB565,JPEG
-    .frame_size = FRAMESIZE_UXGA,//QQVGA-QXGA Do not use sizes above QVGA when not JPEG
+    .frame_size = FRAMESIZE_QQVGA,//QQVGA-QXGA Do not use sizes above QVGA when not JPEG
 
-    .jpeg_quality = 12, //0-63 lower number means higher quality
+    .jpeg_quality = 50, //0-63 lower number means higher quality
     .fb_count = 1 //if more than one, i2s runs in continuous mode. Use only with JPEG
 };
 
@@ -90,7 +90,7 @@ esp_err_t init_camera(){
     //initialize the camera
     esp_err_t err = esp_camera_init(&camera_config);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Camera Init Failed");
+        //ESP_LOGE(TAG, "Camera Init Failed");
         return err;
     }
 
@@ -101,16 +101,16 @@ esp_err_t camera_capture(){
     //acquire a frame
     camera_fb_t * fb = esp_camera_fb_get();
     if (!fb) {
-        ESP_LOGE(TAG, "Camera Capture Failed");
+        //ESP_LOGE(TAG, "Camera Capture Failed");
         return ESP_FAIL;
     }
 
     //replace this with your own function
-    ESP_LOGI(TAG, "Picture taken! Its width was: %zu pixels", fb->width);
-    ESP_LOGI(TAG, "Picture taken! Its height was: %zu pixels", fb->height);
+    //ESP_LOGI(TAG, "Picture taken! Its width was: %zu pixels", fb->width);
+    // ESP_LOGI(TAG, "Picture taken! Its height was: %zu pixels", fb->height);
     // ESP_LOGI(TAG, "Picture taken! Its format was: %zu bytes", fb->format);
     // ESP_LOGI(TAG, "Picture taken! Its buf was: %zu bytes", fb->buf);
-    ESP_LOGI(TAG, "Picture taken! Its len was: %zu bytes", fb->len);
+    // ESP_LOGI(TAG, "Picture taken! Its len was: %zu bytes", fb->len);
   
     //return the frame buffer back to the driver for reuse
     esp_camera_fb_return(fb);
@@ -132,16 +132,16 @@ void init(void) {
         .source_clk = UART_SCLK_APB,
     };
     // We won't use a buffer for sending data.
-    uart_driver_install(UART_NUM_1, RX_BUF_SIZE * 2, 0, 0, NULL, 0);
-    uart_param_config(UART_NUM_1, &uart_config);
-    uart_set_pin(UART_NUM_1, TXD_PIN, RXD_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    uart_driver_install(UART_NUM_0, RX_BUF_SIZE * 2, 0, 0, NULL, 0);
+    uart_param_config(UART_NUM_0, &uart_config);
+    uart_set_pin(UART_NUM_0, TXD_PIN, RXD_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
 }
 
 int sendData(const char* logName, const char* data)
 {
     const int len = strlen(data);
-    const int txBytes = uart_write_bytes(UART_NUM_1, data, len);
-    ESP_LOGI(logName, "Wrote %d bytes", txBytes);
+    const int txBytes = uart_write_bytes(UART_NUM_0, data, len);
+    //ESP_LOGI(logName, "Wrote %d bytes", txBytes);
     return txBytes;
 }
 
@@ -166,7 +166,7 @@ int sendGeneralFrame(uint8_t frameType, int8_t cmdType, uint8_t frameLoadLen, ui
     }
     frameByte[(uint8_t) frameLoadLen + 5 - 1] = checksum;
 
-    uart_write_bytes(UART_NUM_1, (const char *) frameByte, (uint8_t) frameLoadLen + 5);
+    uart_write_bytes(UART_NUM_0, (const char *) frameByte, (uint8_t) frameLoadLen + 5);
     
     free(frameByte);
     return 1;
@@ -207,13 +207,20 @@ int sendAppDataRequest( uint16_t target, uint8_t dataLen, uint8_t* data)
 
 int testingSend()
 {
-    uint8_t* data = malloc(sizeof(uint8_t) * 4);
-    data[0] = 0x01;
-    data[1] = 0x02;
-    data[2] = 0x03;
-    data[3] = 0x04;
-    sendAppDataRequest(0x0000, 4, data);
-    free(data);
+    uint8_t imageID = 0;
+    uint8_t seqNum = 0;
+    for (int8_t i = 0; i < 5; i++) {
+        uint8_t* data = malloc(sizeof(uint8_t) * 4);
+        data[0] = (uint8_t) imageID;
+        data[1] = (uint8_t) seqNum; // sequence Number - Fragment Number
+        data[2] = 0x03;
+        data[3] = 0x04;
+        sendAppDataRequest(0x0000, 4, data);
+        
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        free(data);
+        seqNum = seqNum + 1;
+    }
     return 1;
 }
 
@@ -222,11 +229,28 @@ int sendImage()
     //acquire a frame
     camera_fb_t * fb = esp_camera_fb_get();
     if (!fb) {
-        ESP_LOGE(TAG, "Camera Capture Failed");
+        uint8_t *nextACK = (uint8_t *) malloc(1);
+        nextACK[0] = 0x31;
+        uart_write_bytes(UART_NUM_0, (char *) nextACK, 1);
+        free(nextACK);
+        //ESP_LOGE(TAG, "Camera Capture Failed");
         return ESP_FAIL;
     }
+    //replace this with your own function
+    //ESP_LOGI(TAG, "Picture taken! Its width was: %zu pixels", fb->width);
+    //ESP_LOGI(TAG, "Picture taken! Its height was: %zu pixels", fb->height);
+    // ESP_LOGI(TAG, "Picture taken! Its format was: %zu bytes", fb->format);
+    // ESP_LOGI(TAG, "Picture taken! Its buf was: %zu bytes", fb->buf);
+    //ESP_LOGI(TAG, "Picture taken! Its len was: %zu bytes", fb->len);
+
     uint8_t* imageData = fb->buf;
     size_t imageDataLen = fb->len;
+    
+    uint8_t *ACK = (uint8_t *) malloc(1);
+    ACK[0] = imageDataLen;
+    sendAppDataRequest(0000, 1, ACK);
+    free(ACK);
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
 
     // imageDataLen - Image Size in Byte
     int numOfFragment = 0;                  // Number of Fragments
@@ -251,13 +275,14 @@ int sendImage()
             // Data from index 3 to the end should be the image fragment data.
             memcpy(data + (sizeof(uint8_t) * (2+j)), &imageData[j + i*100], 1);
         }
-        // sendAppDataRequest(0x0000, 4, data);
+        sendAppDataRequest(0x0000, fragmentSize + 2, data);
         free(data);
-        //return the frame buffer back to the driver for reuse
-        esp_camera_fb_return(fb);
-        
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
+
     }
+    
+    //return the frame buffer back to the driver for reuse
+    esp_camera_fb_return(fb);
 
     return 1;
 }
@@ -281,14 +306,14 @@ void sendPacket()
     dataByte[13] = 0x6c;
     dataByte[14] = 0x6f;
     dataByte[15] = 0x4c;
-    uart_write_bytes(UART_NUM_1, (const char *) dataByte, 16);
+    uart_write_bytes(UART_NUM_0, (const char *) dataByte, 16);
     free(dataByte);
 }
 
 static void tx_task(void *arg)
 {
-    static const char *TX_TASK_TAG = "TX_TASK";
-    esp_log_level_set(TX_TASK_TAG, ESP_LOG_INFO);
+    //static const char *TX_TASK_TAG = "TX_TASK";
+    //esp_log_level_set(TX_TASK_TAG, ESP_LOG_INFO);
     while (1) {
         // sendData(TX_TASK_TAG, "Hello world");
         //char data[] = {0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x77, 0x6f, 0x72, 0x6c, 0x64};
@@ -296,23 +321,23 @@ static void tx_task(void *arg)
         //sendData(TX_TASK_TAG, data);
 
         //testingSend();
-        //sendImage();
+        sendImage();                          
 
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
     }
 }
 
 static void rx_task(void *arg)
 {
-    static const char *RX_TASK_TAG = "RX_TASK";
-    esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
+    //static const char *RX_TASK_TAG = "RX_TASK";
+    //esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
     uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
     while (1) {
-        const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 1000 / portTICK_RATE_MS);
+        const int rxBytes = uart_read_bytes(UART_NUM_0, data, RX_BUF_SIZE, 1000 / portTICK_RATE_MS);
         if (rxBytes > 0) {
             data[rxBytes] = 0;
-            ESP_LOGI(RX_TASK_TAG, "Read %d bytes: '%s'", rxBytes, data);
-            ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
+            //ESP_LOGI(RX_TASK_TAG, "Read %d bytes: '%s'", rxBytes, data);
+            //ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
         }
     }
     free(data);
@@ -320,8 +345,8 @@ static void rx_task(void *arg)
 
 void app_main(void)
 {
-    init();
     init_camera();
+    init();
     xTaskCreate(rx_task, "uart_rx_task", 1024*2, NULL, configMAX_PRIORITIES, NULL);
     xTaskCreate(tx_task, "uart_tx_task", 1024*2, NULL, configMAX_PRIORITIES-1, NULL);
 }
