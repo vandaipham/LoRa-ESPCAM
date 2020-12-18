@@ -224,7 +224,7 @@ int testingSend()
     return 1;
 }
 
-int sendImage()
+void sendImage()
 {
     //acquire a frame
     camera_fb_t * fb = esp_camera_fb_get();
@@ -243,48 +243,51 @@ int sendImage()
     // ESP_LOGI(TAG, "Picture taken! Its buf was: %zu bytes", fb->buf);
     //ESP_LOGI(TAG, "Picture taken! Its len was: %zu bytes", fb->len);
 
-    uint8_t* imageData = fb->buf;
+    //uint8_t* imageData = fb->buf;
     size_t imageDataLen = fb->len;
-    
-    uint8_t *ACK = (uint8_t *) malloc(1);
-    ACK[0] = imageDataLen;
-    sendAppDataRequest(0000, 1, ACK);
-    free(ACK);
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
-
     // imageDataLen - Image Size in Byte
-    int numOfFragment = 0;                  // Number of Fragments
-    int fragmentSize = 100;                 // each fragment has 100 Bytes.
-    int imageID = 0;
+    size_t numOfFragment = 0;                  // Number of Fragments
+    size_t fragmentSize = 100;                 // each fragment has 100 Bytes.
+    size_t imageID = 0;
 
     if (imageDataLen % fragmentSize == 0)
         numOfFragment = imageDataLen / fragmentSize;
     else
         numOfFragment = imageDataLen / fragmentSize + 1;
     
-    for (int8_t i = 0; i < numOfFragment; i++) {
+    for (size_t i = 0; i < numOfFragment; i++) {
         // Sending each fragment
         if (i == numOfFragment - 1)
             fragmentSize = imageDataLen - (numOfFragment-1)*100;
-
+        
         uint8_t* data = malloc(sizeof(uint8_t) * (fragmentSize + 2));
         data[0] = (uint8_t) imageID;     // Image ID
         data[1] = (uint8_t) i;     // Sequence Number
 
-        for (int8_t j = 0; j < 100; j++) {
-            // Data from index 3 to the end should be the image fragment data.
-            memcpy(data + (sizeof(uint8_t) * (2+j)), &imageData[j + i*100], 1);
+        for (size_t j = 0; j < fragmentSize; j++) {
+            *(data+j+2) = *(fb->buf + j + i*fragmentSize);
         }
+
+        //for (size_t j = 0; j < 100; j++) {
+            // Data from index 3 to the end should be the image fragment data.
+        //    memcpy(data + (sizeof(uint8_t) * (2+j)), &imageData[j + i*100], 1);
+        //}
         sendAppDataRequest(0x0000, fragmentSize + 2, data);
+        /*
+        uint8_t* data = malloc(sizeof(uint8_t) * 4);
+        data[0] = (uint8_t) imageID;
+        data[1] = (uint8_t) i; // sequence Number - Fragment Number
+        data[2] = 0x03;
+        data[3] = 0x04;
+        sendAppDataRequest(0x0000, 4, data);*/
         free(data);
-        vTaskDelay(10000 / portTICK_PERIOD_MS);
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
 
     }
     
     //return the frame buffer back to the driver for reuse
     esp_camera_fb_return(fb);
 
-    return 1;
 }
 
 void sendPacket()
@@ -321,12 +324,13 @@ static void tx_task(void *arg)
         //sendData(TX_TASK_TAG, data);
 
         //testingSend();
-        sendImage();                          
+        sendImage();
 
-        vTaskDelay(10000 / portTICK_PERIOD_MS);
+        vTaskDelay(20000 / portTICK_PERIOD_MS);
     }
 }
 
+/*
 static void rx_task(void *arg)
 {
     //static const char *RX_TASK_TAG = "RX_TASK";
@@ -342,11 +346,13 @@ static void rx_task(void *arg)
     }
     free(data);
 }
-
+*/
 void app_main(void)
 {
     init_camera();
     init();
-    xTaskCreate(rx_task, "uart_rx_task", 1024*2, NULL, configMAX_PRIORITIES, NULL);
+    //xTaskCreate(rx_task, "uart_rx_task", 1024*2, NULL, configMAX_PRIORITIES, NULL);
     xTaskCreate(tx_task, "uart_tx_task", 1024*2, NULL, configMAX_PRIORITIES-1, NULL);
+    //sendImage();
+    //testingSend();
 }
